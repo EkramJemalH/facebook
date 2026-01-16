@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/auth_service.dart';
 import 'home_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -13,6 +15,7 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final AuthService _authService = AuthService();
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
@@ -23,23 +26,115 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  void _handleLogin() {
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      // Simulate login process
-      Future.delayed(const Duration(seconds: 2), () {
+      try {
+        await _authService.signInWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
         if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const HomePage()),
           );
         }
+      } on FirebaseAuthException catch (e) {
+        if (mounted) {
+          _showError(e.message ?? 'Login failed');
+        }
+      } catch (e) {
+        if (mounted) {
+          _showError('An unexpected error occurred');
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _handleGoogleLogin() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await _authService.signInWithGoogle();
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const HomePage()),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        _showError(e.message ?? 'Google Sign-In failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('An unexpected error occurred');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+  
+  Future<void> _handleCreateAccount() async {
+      // For now, just a placeholder or basic implementation
+      // You could add a separate CreateAccountPage or reuse this valid form
+      // Ideally, navigate to a new page. For this task, I'll allow creating account with correct credentials on this page if user clicks "Create"
+       if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
       });
+
+      try {
+        await _authService.createUserWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+         if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Account Created! Logging in...')),
+            );
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const HomePage()),
+          );
+        }
+      } on FirebaseAuthException catch (e) {
+         if (mounted) {
+          _showError(e.message ?? 'Registration failed');
+        }
+      } catch (e) {
+        if (mounted) {
+          _showError('An unexpected error occurred');
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
   }
 
@@ -83,7 +178,7 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 20),
                   // Welcome text
                   const Text(
-                    'Welcome to Facebook',
+                    'Welcome back',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 28,
@@ -107,7 +202,7 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
-                      labelText: 'Email or phone number',
+                      labelText: 'Email',
                       labelStyle: const TextStyle(color: Colors.black54),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -133,7 +228,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'Please enter your email or phone number';
+                        return 'Please enter your email';
                       }
                       return null;
                     },
@@ -247,6 +342,43 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                     ),
                   ),
+                   const SizedBox(height: 16),
+                   // Continue with Google Button
+                    SizedBox(
+                    height: 50,
+                    child: OutlinedButton(
+                      onPressed: _isLoading ? null : _handleGoogleLogin,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.black87,
+                        side: const BorderSide(
+                          color: Colors.grey,
+                          width: 1,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                           // Using a generic icon if no asset is available, or load asset if present.
+                           // Assuming no 'google_logo.png' in assets yet, using Icon or creating simple text for now to be safe.
+                           // Ideally we'd use an asset. I will use a Text for now to avoid Missing Asset error, or an Icon.
+                           // There isn't a built-in Google icon in Material Icons.
+                           // I'll just use Text "Continue with Google" with a placeholder color or icon.
+                           const Icon(Icons.g_mobiledata, size: 30, color: Colors.blue), // Placeholder
+                           const SizedBox(width: 10),
+                           const Text(
+                            'Continue with Google',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   // Divider
                   Row(
@@ -280,13 +412,7 @@ class _LoginPageState extends State<LoginPage> {
                   SizedBox(
                     height: 50,
                     child: OutlinedButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Create account functionality'),
-                          ),
-                        );
-                      },
+                      onPressed: _isLoading ? null : _handleCreateAccount,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF1877F2),
                         side: const BorderSide(

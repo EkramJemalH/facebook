@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
-import 'home_page.dart';
-
+import 'home_page.dart'; 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -18,6 +17,31 @@ class _LoginPageState extends State<LoginPage> {
   final AuthService _authService = AuthService();
   bool _isPasswordVisible = false;
   bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    // Check if user is already logged in
+    _checkCurrentUser();
+  }
+
+  Future<void> _checkCurrentUser() async {
+    if (_authService.isLoggedIn()) {
+      // Navigate to home page if already logged in
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigateToHome();
+      });
+    }
+  }
+
+  void _navigateToHome() {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => HomePage(),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -31,6 +55,17 @@ class _LoginPageState extends State<LoginPage> {
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -39,6 +74,7 @@ class _LoginPageState extends State<LoginPage> {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
+        _errorMessage = null;
       });
 
       try {
@@ -46,19 +82,18 @@ class _LoginPageState extends State<LoginPage> {
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const HomePage()),
-          );
-        }
+        _showSuccess('Logged in successfully!');
+        _navigateToHome();
       } on FirebaseAuthException catch (e) {
-        if (mounted) {
-          _showError(e.message ?? 'Login failed');
-        }
+        setState(() {
+          _errorMessage = _getFirebaseErrorMessage(e.code);
+        });
+        _showError(_errorMessage!);
       } catch (e) {
-        if (mounted) {
-          _showError('An unexpected error occurred');
-        }
+        setState(() {
+          _errorMessage = 'An unexpected error occurred';
+        });
+        _showError(_errorMessage!);
       } finally {
         if (mounted) {
           setState(() {
@@ -72,23 +107,23 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _handleGoogleLogin() async {
     setState(() {
       _isLoading = true;
+      _errorMessage = null;
     });
 
     try {
       await _authService.signInWithGoogle();
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomePage()),
-        );
-      }
+      _showSuccess('Google sign-in successful!');
+      _navigateToHome();
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        _showError(e.message ?? 'Google Sign-In failed');
-      }
+      setState(() {
+        _errorMessage = _getFirebaseErrorMessage(e.code);
+      });
+      _showError(_errorMessage!);
     } catch (e) {
-      if (mounted) {
-        _showError('An unexpected error occurred');
-      }
+      setState(() {
+        _errorMessage = 'Failed to sign in with Google';
+      });
+      _showError(_errorMessage!);
     } finally {
       if (mounted) {
         setState(() {
@@ -97,14 +132,12 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
   }
-  
+
   Future<void> _handleCreateAccount() async {
-      // For now, just a placeholder or basic implementation
-      // You could add a separate CreateAccountPage or reuse this valid form
-      // Ideally, navigate to a new page. For this task, I'll allow creating account with correct credentials on this page if user clicks "Create"
-       if (_formKey.currentState!.validate()) {
+    if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
+        _errorMessage = null;
       });
 
       try {
@@ -112,22 +145,18 @@ class _LoginPageState extends State<LoginPage> {
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
-         if (mounted) {
-             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Account Created! Logging in...')),
-            );
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const HomePage()),
-          );
-        }
+        _showSuccess('Account created successfully!');
+        _navigateToHome();
       } on FirebaseAuthException catch (e) {
-         if (mounted) {
-          _showError(e.message ?? 'Registration failed');
-        }
+        setState(() {
+          _errorMessage = _getFirebaseErrorMessage(e.code);
+        });
+        _showError(_errorMessage!);
       } catch (e) {
-        if (mounted) {
-          _showError('An unexpected error occurred');
-        }
+        setState(() {
+          _errorMessage = 'Account creation failed';
+        });
+        _showError(_errorMessage!);
       } finally {
         if (mounted) {
           setState(() {
@@ -138,12 +167,80 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _handleForgotPassword() async {
+    final email = _emailController.text.trim();
+    
+    if (email.isEmpty) {
+      _showError('Please enter your email to reset password');
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Password'),
+        content: Text('Send password reset email to $email?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              setState(() {
+                _isLoading = true;
+              });
+              
+              try {
+                await _authService.sendPasswordResetEmail(email);
+                _showSuccess('Password reset email sent!');
+              } on FirebaseAuthException catch (e) {
+                _showError(_getFirebaseErrorMessage(e.code));
+              } finally {
+                if (mounted) {
+                  setState(() {
+                    _isLoading = false;
+                  });
+                }
+              }
+            },
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getFirebaseErrorMessage(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'No user found with this email';
+      case 'wrong-password':
+        return 'Incorrect password';
+      case 'invalid-email':
+        return 'Invalid email address';
+      case 'email-already-in-use':
+        return 'Email already registered';
+      case 'weak-password':
+        return 'Password is too weak';
+      case 'network-request-failed':
+        return 'Network error. Check your connection';
+      case 'ERROR_ABORTED_BY_USER':
+        return 'Sign-in cancelled';
+      default:
+        return 'Authentication failed';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
 
@@ -159,6 +256,7 @@ class _LoginPageState extends State<LoginPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 40),
+                  
                   // Facebook logo
                   Center(
                     child: Container(
@@ -175,7 +273,9 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
+                  
                   const SizedBox(height: 20),
+                  
                   // Welcome text
                   const Text(
                     'Welcome back',
@@ -186,7 +286,9 @@ class _LoginPageState extends State<LoginPage> {
                       color: Colors.black87,
                     ),
                   ),
+                  
                   const SizedBox(height: 8),
+                  
                   const Text(
                     'Connect with friends and the world\naround you on Facebook.',
                     textAlign: TextAlign.center,
@@ -196,13 +298,42 @@ class _LoginPageState extends State<LoginPage> {
                       height: 1.5,
                     ),
                   ),
+                  
                   const SizedBox(height: 40),
-                  // Email/Phone input
+                  
+                  // Error message display
+                  if (_errorMessage != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.red[700]),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: TextStyle(color: Colors.red[700]),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  
+                  if (_errorMessage != null) const SizedBox(height: 20),
+                  
+                  // Email input
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
                       labelText: 'Email',
+                      hintText: 'Enter your email',
+                      prefixIcon: const Icon(Icons.email_outlined),
                       labelStyle: const TextStyle(color: Colors.black54),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -230,16 +361,23 @@ class _LoginPageState extends State<LoginPage> {
                       if (value == null || value.isEmpty) {
                         return 'Please enter your email';
                       }
+                      if (!value.contains('@')) {
+                        return 'Please enter a valid email';
+                      }
                       return null;
                     },
                   ),
+                  
                   const SizedBox(height: 16),
+                  
                   // Password input
                   TextFormField(
                     controller: _passwordController,
                     obscureText: !_isPasswordVisible,
                     decoration: InputDecoration(
                       labelText: 'Password',
+                      hintText: 'Enter your password',
+                      prefixIcon: const Icon(Icons.lock_outline),
                       labelStyle: const TextStyle(color: Colors.black54),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -286,18 +424,14 @@ class _LoginPageState extends State<LoginPage> {
                       return null;
                     },
                   ),
+                  
                   const SizedBox(height: 12),
+                  
                   // Forgot password
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Forgot password functionality'),
-                          ),
-                        );
-                      },
+                      onPressed: _isLoading ? null : _handleForgotPassword,
                       child: const Text(
                         'Forgot password?',
                         style: TextStyle(
@@ -308,7 +442,9 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
+                  
                   const SizedBox(height: 20),
+                  
                   // Login button
                   SizedBox(
                     height: 50,
@@ -342,9 +478,11 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                     ),
                   ),
-                   const SizedBox(height: 16),
-                   // Continue with Google Button
-                    SizedBox(
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Continue with Google Button
+                  SizedBox(
                     height: 50,
                     child: OutlinedButton(
                       onPressed: _isLoading ? null : _handleGoogleLogin,
@@ -361,14 +499,20 @@ class _LoginPageState extends State<LoginPage> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                           // Using a generic icon if no asset is available, or load asset if present.
-                           // Assuming no 'google_logo.png' in assets yet, using Icon or creating simple text for now to be safe.
-                           // Ideally we'd use an asset. I will use a Text for now to avoid Missing Asset error, or an Icon.
-                           // There isn't a built-in Google icon in Material Icons.
-                           // I'll just use Text "Continue with Google" with a placeholder color or icon.
-                           const Icon(Icons.g_mobiledata, size: 30, color: Colors.blue), // Placeholder
-                           const SizedBox(width: 10),
-                           const Text(
+                          Image.asset(
+                            'assets/google_logo.png',
+                            height: 24,
+                            width: 24,
+                            errorBuilder: (context, error, stackTrace) {
+                              return const Icon(
+                                Icons.g_mobiledata,
+                                size: 24,
+                                color: Colors.blue,
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
                             'Continue with Google',
                             style: TextStyle(
                               fontSize: 16,
@@ -379,7 +523,9 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
+                  
                   const SizedBox(height: 20),
+                  
                   // Divider
                   Row(
                     children: [
@@ -407,7 +553,9 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ],
                   ),
+                  
                   const SizedBox(height: 20),
+                  
                   // Create account button
                   SizedBox(
                     height: 50,
@@ -432,7 +580,21 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
+                  
                   const SizedBox(height: 30),
+                  
+                  // Privacy policy text
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      'By logging in, you agree to our Terms, Data Policy and Cookies Policy.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
